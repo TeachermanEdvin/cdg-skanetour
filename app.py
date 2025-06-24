@@ -45,6 +45,7 @@ def index():
         data['rounds'].append({
     "id": len(data['rounds']),
     "scores": scores,
+    "handicaps": {player: data['players'][player]['handicap'] for player in scores},
     "adjusted_scores": adjusted,
     "placements": placements
 })
