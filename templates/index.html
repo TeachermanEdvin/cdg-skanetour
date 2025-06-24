@@ -35,7 +35,8 @@
     <li class="list-group-item">
       <strong>Runda {{ round.id + 1 }}:</strong>
       {% for p in round.placements %}
-  {{ p }}: {{ round.scores[p] }} - {{ data.players[p].handicap }} = <strong>{{ round.adjusted_scores[p] }}</strong>
+  {{ round.scores[p] }} - {{ round.handicaps[p] }} = <strong>{{ round.adjusted_scores[p] }}</strong>
+
   {% if not loop.last %}, {% endif %}
 {% endfor %}
       <a href="{{ url_for('edit_round', round_id=round.id) }}" class="btn btn-sm btn-link">Redigera</a>
