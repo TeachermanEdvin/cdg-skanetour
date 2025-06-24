@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, redirect, url_for
 import json
 import os
@@ -18,23 +17,20 @@ def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-def calculate_results(data, scores):
+def calculate_adjusted_and_placements(data, scores):
     adjusted = {
         player: scores[player] - data['players'][player]['handicap']
         for player in scores
     }
     sorted_players = sorted(adjusted.items(), key=lambda x: x[1])
     placements = [p[0] for p in sorted_players]
+    return adjusted, placements
 
-    # Poäng
+def apply_points_and_handicap(data, placements):
     for idx, player in enumerate(placements):
         data['players'][player]['points'] += 3 - idx
-
-    # Handikappjustering
     data['players'][placements[0]]['handicap'] = max(0, data['players'][placements[0]]['handicap'] - 1)
     data['players'][placements[2]]['handicap'] += 1
-
-    return adjusted, placements
 
 # --- Routes ---
 @app.route('/', methods=['GET', 'POST'])
@@ -45,13 +41,14 @@ def index():
             player: int(request.form[player])
             for player in data['players']
         }
-        adjusted, placements = calculate_results(data, scores)
+        adjusted, placements = calculate_adjusted_and_placements(data, scores)
         data['rounds'].append({
             "id": len(data['rounds']),
             "scores": scores,
             "adjusted_scores": adjusted,
             "placements": placements
         })
+        apply_points_and_handicap(data, placements)
         save_data(data)
         return redirect(url_for('index'))
     return render_template('index.html', data=data)
@@ -80,7 +77,6 @@ def edit_round(round_id):
             player: int(request.form[player])
             for player in data['players']
         }
-        # Rensa poäng och handikapp, räkna om allt
         for p in data['players'].values():
             p['points'] = 0
         initial_handicaps = request.form.getlist('initial_handicaps')
@@ -88,42 +84,31 @@ def edit_round(round_id):
             data['players'][name]['handicap'] = int(h)
 
         data['rounds'][round_id]['scores'] = new_scores
-        # Räkna om alla rundor
         for i, r in enumerate(data['rounds']):
-            adjusted, placements = calculate_results(data, r['scores'])
+            adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
             r['adjusted_scores'] = adjusted
             r['placements'] = placements
+            apply_points_and_handicap(data, placements)
         save_data(data)
         return redirect(url_for('index'))
 
     return render_template('edit_round.html', data=data, round_id=round_id)
-    
+
 @app.route('/delete/<int:round_id>', methods=['POST'])
 def delete_round(round_id):
     data = load_data()
-    # Ta bort rundan
     data['rounds'].pop(round_id)
-
-    # Rensa poäng och återställ start-handikapp (valfritt: från första rundan eller manuellt)
     for p in data['players'].values():
         p['points'] = 0
-
-    # Här kan du välja att spara start-handikapp från första rundan eller en konfig
-    # Just nu antar vi att spelarna startade med sina nuvarande handikapp (utan historik)
-    # Vill du spara originalhandikapp kan vi lösa det separat!
-
-    for r in data['rounds']:
-        adjusted, placements = calculate_results(data, r['scores'])
+    for i, r in enumerate(data['rounds']):
+        adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
         r['adjusted_scores'] = adjusted
         r['placements'] = placements
-
-    # Uppdatera id:n så att de är i ordning
-    for i, r in enumerate(data['rounds']):
+        apply_points_and_handicap(data, placements)
         r['id'] = i
-
     save_data(data)
     return redirect(url_for('index'))
-    
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
