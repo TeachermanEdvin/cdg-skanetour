@@ -97,7 +97,33 @@ def edit_round(round_id):
         return redirect(url_for('index'))
 
     return render_template('edit_round.html', data=data, round_id=round_id)
+    
+@app.route('/delete/<int:round_id>', methods=['POST'])
+def delete_round(round_id):
+    data = load_data()
+    # Ta bort rundan
+    data['rounds'].pop(round_id)
 
+    # Rensa poäng och återställ start-handikapp (valfritt: från första rundan eller manuellt)
+    for p in data['players'].values():
+        p['points'] = 0
+
+    # Här kan du välja att spara start-handikapp från första rundan eller en konfig
+    # Just nu antar vi att spelarna startade med sina nuvarande handikapp (utan historik)
+    # Vill du spara originalhandikapp kan vi lösa det separat!
+
+    for r in data['rounds']:
+        adjusted, placements = calculate_results(data, r['scores'])
+        r['adjusted_scores'] = adjusted
+        r['placements'] = placements
+
+    # Uppdatera id:n så att de är i ordning
+    for i, r in enumerate(data['rounds']):
+        r['id'] = i
+
+    save_data(data)
+    return redirect(url_for('index'))
+    
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
