@@ -43,12 +43,11 @@ def index():
         }
         adjusted, placements = calculate_adjusted_and_placements(data, scores)
         data['rounds'].append({
-    "id": len(data['rounds']),
-    "scores": scores,
-    "handicaps": {player: data['players'][player]['handicap'] for player in scores},
-    "adjusted_scores": adjusted,
-    "placements": placements
-})
+            "id": len(data['rounds']),
+            "scores": scores,
+            "adjusted_scores": adjusted,
+            "placements": placements
+        })
         apply_points_and_handicap(data, placements)
         save_data(data)
         return redirect(url_for('index'))
