@@ -9,7 +9,8 @@ DATA_FILE = 'rounds.json'
 # --- Helper Functions ---
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"players": {}, "rounds": []}
+        return {"players": {}, "rounds": [],
+        "start_handicaps": {name: int(h) for name, h in zip(names, handicaps)}}
     with open(DATA_FILE, 'r') as f:
         return json.load(f)
 
@@ -86,7 +87,8 @@ def setup():
                 name: {"handicap": int(h), "points": 0}
                 for name, h in zip(names, handicaps)
             },
-            "rounds": []
+            "rounds": [],
+        "start_handicaps": {name: int(h) for name, h in zip(names, handicaps)}
         }
         update_player_stats(data)
         save_data(data)
@@ -125,6 +127,10 @@ def delete_round(round_id):
     data['rounds'].pop(round_id)
     for p in data['players'].values():
         p['points'] = 0
+
+    for name in data['players']:
+        data['players'][name]['handicap'] = data['start_handicaps'][name]
+
     for i, r in enumerate(data['rounds']):
         adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
         r['adjusted_scores'] = adjusted
