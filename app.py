@@ -14,7 +14,7 @@ def load_data():
     with open(DATA_FILE, 'r') as f:
         return json.load(f)
 
-def update_player_stats(data)
+def update_player_stats(data):
         save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
