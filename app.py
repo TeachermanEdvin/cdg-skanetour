@@ -37,16 +37,24 @@ def apply_points_and_handicap(data, placements):
 def index():
     data = load_data()
     if request.method == 'POST':
-        scores = {
-            player: int(request.form[player])
-            for player in data['players']
-        }
+        scores = {}
+        stats = {}
+        for player in data['players']:
+            scores[player] = int(request.form[player])
+            stats[player] = {
+                "c2": int(request.form.get(f'c2_{player}', 0)),
+                "ctp": f'ctp_{player}' in request.form,
+                "ace": request.form.get(f'ace_{player}') == '1'
+            }
+
         adjusted, placements = calculate_adjusted_and_placements(data, scores)
         data['rounds'].append({
             "id": len(data['rounds']),
             "scores": scores,
+            "handicaps": {player: data['players'][player]['handicap'] for player in scores},
             "adjusted_scores": adjusted,
-            "placements": placements
+            "placements": placements,
+            "stats": stats
         })
         apply_points_and_handicap(data, placements)
         save_data(data)
