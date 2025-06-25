@@ -15,7 +15,23 @@ def load_data():
         return json.load(f)
 
 def update_player_stats(data):
-        save_data(data):
+    # Återställ totalsummor
+    for name in data['players']:
+        data['players'][name].update({
+            "total_c2": 0,
+            "total_ctp": 0,
+            "total_ace": 0
+        })
+    # Summera alla rundor
+    for round in data['rounds']:
+        for name, stat in round.get('stats', {}).items():
+            data['players'][name]['total_c2'] += stat.get("c2", 0)
+            if stat.get("ctp"):
+                data['players'][name]['total_ctp'] += 1
+            if stat.get("ace"):
+                data['players'][name]['total_ace'] += 1
+
+def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
