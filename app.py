@@ -3,16 +3,18 @@ import json
 import os
 
 app = Flask(__name__)
-
 DATA_FILE = 'rounds.json'
 
 # --- Helper Functions ---
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"players": {}, "rounds": [],
-        "start_handicaps": {name: int(h) for name, h in zip(names, handicaps)}}
+        return {"players": {}, "rounds": [], "start_handicaps": {}}
     with open(DATA_FILE, 'r') as f:
         return json.load(f)
+
+def save_data(data):
+    with open(DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
 
 def update_player_stats(data):
     # Återställ totalsummor
@@ -22,7 +24,6 @@ def update_player_stats(data):
             "total_ctp": 0,
             "total_ace": 0
         })
-    # Summera alla rundor
     for round in data['rounds']:
         for name, stat in round.get('stats', {}).items():
             data['players'][name]['total_c2'] += stat.get("c2", 0)
@@ -30,10 +31,6 @@ def update_player_stats(data):
                 data['players'][name]['total_ctp'] += 1
             if stat.get("ace"):
                 data['players'][name]['total_ace'] += 1
-
-def save_data(data):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
 
 def calculate_adjusted_and_placements(data, scores):
     adjusted = {
@@ -43,19 +40,6 @@ def calculate_adjusted_and_placements(data, scores):
     sorted_players = sorted(adjusted.items(), key=lambda x: x[1])
     placements = [p[0] for p in sorted_players]
     return adjusted, placements
-
-
-def update_player_stats(data):
-    # Återställ alla
-    for name in data['players']:
-        data['players'][name].update({"total_c2": 0, "total_ctp": 0, "total_ace": 0})
-    for round in data['rounds']:
-        for name, stat in round.get('stats', {}).items():
-            data['players'][name]['total_c2'] += stat.get("c2", 0)
-            if stat.get("ctp"):
-                data['players'][name]['total_ctp'] += 1
-            if stat.get("ace"):
-                data['players'][name]['total_ace'] += 1
 
 def apply_points_and_handicap(data, placements):
     for idx, player in enumerate(placements):
@@ -91,6 +75,7 @@ def index():
         update_player_stats(data)
         save_data(data)
         return redirect(url_for('index'))
+
     return render_template('index.html', data=data)
 
 @app.route('/setup', methods=['GET', 'POST'])
@@ -104,7 +89,7 @@ def setup():
                 for name, h in zip(names, handicaps)
             },
             "rounds": [],
-        "start_handicaps": {name: int(h) for name, h in zip(names, handicaps)}
+            "start_handicaps": {name: int(h) for name, h in zip(names, handicaps)}
         }
         update_player_stats(data)
         save_data(data)
@@ -119,18 +104,28 @@ def edit_round(round_id):
             player: int(request.form[player])
             for player in data['players']
         }
+        new_stats = {
+            player: {
+                "c2": int(request.form.get(f'c2_{player}', 0)),
+                "ctp": f'ctp_{player}' in request.form,
+                "ace": request.form.get(f'ace_{player}') == '1'
+            } for player in data['players']
+        }
+
         for p in data['players'].values():
             p['points'] = 0
-        initial_handicaps = request.form.getlist('initial_handicaps')
-        for name, h in zip(data['players'], initial_handicaps):
-            data['players'][name]['handicap'] = int(h)
+        for name in data['players']:
+            data['players'][name]['handicap'] = data['start_handicaps'][name]
 
         data['rounds'][round_id]['scores'] = new_scores
+        data['rounds'][round_id]['stats'] = new_stats
+
         for i, r in enumerate(data['rounds']):
             adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
             r['adjusted_scores'] = adjusted
             r['placements'] = placements
             apply_points_and_handicap(data, placements)
+
         update_player_stats(data)
         save_data(data)
         return redirect(url_for('index'))
@@ -143,10 +138,8 @@ def delete_round(round_id):
     data['rounds'].pop(round_id)
     for p in data['players'].values():
         p['points'] = 0
-
     for name in data['players']:
         data['players'][name]['handicap'] = data['start_handicaps'][name]
-
     for i, r in enumerate(data['rounds']):
         adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
         r['adjusted_scores'] = adjusted
@@ -154,7 +147,7 @@ def delete_round(round_id):
         apply_points_and_handicap(data, placements)
         r['id'] = i
     update_player_stats(data)
-        save_data(data)
+    save_data(data)
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
