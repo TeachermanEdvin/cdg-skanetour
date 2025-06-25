@@ -25,13 +25,27 @@
     <h3>Poängställning</h3>
     <table class="table table-bordered">
       <thead class="table-success">
-        <tr><th>Spelare</th><th>Poäng</th><th>Handikapp</th></tr>
-      </thead>
+	<tr>
+		<th>Spelare</th>
+		<th>Poäng</th>
+		<th>Handikapp</th>
+		<th>C2</th>
+		<th>CTP</th>
+		<th>ACE</th>
+	</tr>
+	</thead>
       <tbody>
-        {% for name, info in data.players.items() %}
-        <tr><td>{{ name }}</td><td>{{ info.points }}</td><td>{{ info.handicap }}</td></tr>
-        {% endfor %}
-      </tbody>
+  {% for name, info in data.players.items() %}
+  <tr>
+    <td>{{ name }}</td>
+    <td>{{ info.points }}</td>
+    <td>{{ info.handicap }}</td>
+    <td>{{ info.total_c2 or 0 }}</td>
+    <td>{{ info.total_ctp or 0 }}</td>
+    <td>{{ info.total_ace or 0 }}</td>
+  </tr>
+  {% endfor %}
+</tbody>
     </table>
   </div>
 

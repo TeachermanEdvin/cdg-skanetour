@@ -13,7 +13,8 @@ def load_data():
     with open(DATA_FILE, 'r') as f:
         return json.load(f)
 
-def save_data(data):
+def update_player_stats(data)
+        save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
@@ -25,6 +26,19 @@ def calculate_adjusted_and_placements(data, scores):
     sorted_players = sorted(adjusted.items(), key=lambda x: x[1])
     placements = [p[0] for p in sorted_players]
     return adjusted, placements
+
+
+def update_player_stats(data):
+    # Återställ alla
+    for name in data['players']:
+        data['players'][name].update({"total_c2": 0, "total_ctp": 0, "total_ace": 0})
+    for round in data['rounds']:
+        for name, stat in round.get('stats', {}).items():
+            data['players'][name]['total_c2'] += stat.get("c2", 0)
+            if stat.get("ctp"):
+                data['players'][name]['total_ctp'] += 1
+            if stat.get("ace"):
+                data['players'][name]['total_ace'] += 1
 
 def apply_points_and_handicap(data, placements):
     for idx, player in enumerate(placements):
@@ -57,6 +71,7 @@ def index():
             "stats": stats
         })
         apply_points_and_handicap(data, placements)
+        update_player_stats(data)
         save_data(data)
         return redirect(url_for('index'))
     return render_template('index.html', data=data)
@@ -73,6 +88,7 @@ def setup():
             },
             "rounds": []
         }
+        update_player_stats(data)
         save_data(data)
         return redirect(url_for('index'))
     return render_template('setup.html')
@@ -97,6 +113,7 @@ def edit_round(round_id):
             r['adjusted_scores'] = adjusted
             r['placements'] = placements
             apply_points_and_handicap(data, placements)
+        update_player_stats(data)
         save_data(data)
         return redirect(url_for('index'))
 
@@ -114,7 +131,8 @@ def delete_round(round_id):
         r['placements'] = placements
         apply_points_and_handicap(data, placements)
         r['id'] = i
-    save_data(data)
+    update_player_stats(data)
+        save_data(data)
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
