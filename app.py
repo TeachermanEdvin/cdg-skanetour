@@ -85,8 +85,8 @@ def index():
                 'raw': score,
                 'handicap': hcap,
                 'c2': c2,
-                'ctp': ctp,
-                'ace': ace
+                'ctp': int(ctp),
+                'ace': int(ace)
             }
 
         adjusted = {
@@ -102,7 +102,7 @@ def index():
             placement = idx + 1
             cur.execute(
                 "INSERT INTO round_scores (round_id, player_id, raw_score, adjusted_score, placement, handicap_used, c2, ctp, ace) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (round_id, info['id'], info['raw'], adjusted_score, placement, info['handicap'], info['c2'], info['ctp'], info['ace'])
+                (round_id, info['id'], info['raw'], adjusted_score, placement, info['handicap'], info['c2'], bool(info['ctp']), bool(info['ace']))
             )
 
             points_add = 4 - placement
