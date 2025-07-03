@@ -1,155 +1,142 @@
 from flask import Flask, render_template, request, redirect, url_for
-import json
+import psycopg2
 import os
 
 app = Flask(__name__)
-DATA_FILE = 'rounds.json'
 
-# --- Helper Functions ---
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"players": {}, "rounds": [], "start_handicaps": {}}
-    with open(DATA_FILE, 'r') as f:
-        return json.load(f)
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-def save_data(data):
-    with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+def get_db():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
-def update_player_stats(data):
-    # Återställ totalsummor
-    for name in data['players']:
-        data['players'][name].update({
-            "total_c2": 0,
-            "total_ctp": 0,
-            "total_ace": 0
-        })
-    for round in data['rounds']:
-        for name, stat in round.get('stats', {}).items():
-            data['players'][name]['total_c2'] += stat.get("c2", 0)
-            if stat.get("ctp"):
-                data['players'][name]['total_ctp'] += 1
-            if stat.get("ace"):
-                data['players'][name]['total_ace'] += 1
+def init_db():
+    schema = """
+    CREATE TABLE IF NOT EXISTS players (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        handicap INTEGER NOT NULL DEFAULT 0,
+        points INTEGER NOT NULL DEFAULT 0,
+        total_c2 INTEGER NOT NULL DEFAULT 0,
+        total_ctp INTEGER NOT NULL DEFAULT 0,
+        total_ace INTEGER NOT NULL DEFAULT 0
+    );
 
-def calculate_adjusted_and_placements(data, scores):
-    adjusted = {
-        player: scores[player] - data['players'][player]['handicap']
-        for player in scores
-    }
-    sorted_players = sorted(adjusted.items(), key=lambda x: x[1])
-    placements = [p[0] for p in sorted_players]
-    return adjusted, placements
+    CREATE TABLE IF NOT EXISTS rounds (
+        id SERIAL PRIMARY KEY
+    );
 
-def apply_points_and_handicap(data, placements):
-    for idx, player in enumerate(placements):
-        data['players'][player]['points'] += 3 - idx
-    data['players'][placements[0]]['handicap'] = max(0, data['players'][placements[0]]['handicap'] - 1)
-    data['players'][placements[2]]['handicap'] += 1
+    CREATE TABLE IF NOT EXISTS round_scores (
+        id SERIAL PRIMARY KEY,
+        round_id INTEGER REFERENCES rounds(id),
+        player_id INTEGER REFERENCES players(id),
+        raw_score INTEGER,
+        adjusted_score INTEGER,
+        placement INTEGER,
+        handicap_used INTEGER,
+        c2 INTEGER DEFAULT 0,
+        ctp BOOLEAN DEFAULT FALSE,
+        ace BOOLEAN DEFAULT FALSE
+    );
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(schema)
+    conn.commit()
+    cur.close()
+    conn.close()
 
-# --- Routes ---
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    data = load_data()
-    if request.method == 'POST':
-        scores = {}
-        stats = {}
-        for player in data['players']:
-            scores[player] = int(request.form[player])
-            stats[player] = {
-                "c2": int(request.form.get(f'c2_{player}', 0)),
-                "ctp": f'ctp_{player}' in request.form,
-                "ace": request.form.get(f'ace_{player}') == '1'
-            }
-
-        adjusted, placements = calculate_adjusted_and_placements(data, scores)
-        data['rounds'].append({
-            "id": len(data['rounds']),
-            "scores": scores,
-            "handicaps": {player: data['players'][player]['handicap'] for player in scores},
-            "adjusted_scores": adjusted,
-            "placements": placements,
-            "stats": stats
-        })
-        apply_points_and_handicap(data, placements)
-        update_player_stats(data)
-        save_data(data)
-        return redirect(url_for('index'))
-
-    return render_template('index.html', data=data)
+@app.before_first_request
+def setup_db_if_needed():
+    init_db()
 
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
     if request.method == 'POST':
         names = request.form.getlist('name')
         handicaps = request.form.getlist('handicap')
-        data = {
-            "players": {
-                name: {"handicap": int(h), "points": 0}
-                for name, h in zip(names, handicaps)
-            },
-            "rounds": [],
-            "start_handicaps": {name: int(h) for name, h in zip(names, handicaps)}
-        }
-        update_player_stats(data)
-        save_data(data)
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM round_scores")
+        cur.execute("DELETE FROM rounds")
+        cur.execute("DELETE FROM players")
+        for name, h in zip(names, handicaps):
+            cur.execute("INSERT INTO players (name, handicap) VALUES (%s, %s)", (name, int(h)))
+        conn.commit()
+        cur.close()
+        conn.close()
         return redirect(url_for('index'))
     return render_template('setup.html')
 
-@app.route('/edit/<int:round_id>', methods=['GET', 'POST'])
-def edit_round(round_id):
-    data = load_data()
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, handicap, points, total_c2, total_ctp, total_ace FROM players ORDER BY id")
+    players = cur.fetchall()
+
     if request.method == 'POST':
-        new_scores = {
-            player: int(request.form[player])
-            for player in data['players']
+        cur.execute("INSERT INTO rounds DEFAULT VALUES RETURNING id")
+        round_id = cur.fetchone()[0]
+
+        scores = {}
+        for pid, name, hcap, *_ in players:
+            score = int(request.form[name])
+            c2 = int(request.form.get(f'c2_{name}', 0))
+            ctp = 1 if f'ctp_{name}' in request.form else 0
+            ace = 1 if request.form.get(f'ace_{name}') == '1' else 0
+            scores[name] = {
+                'id': pid,
+                'raw': score,
+                'handicap': hcap,
+                'c2': c2,
+                'ctp': ctp,
+                'ace': ace
+            }
+
+        adjusted = {
+            name: scores[name]['raw'] - scores[name]['handicap']
+            for name in scores
         }
-        new_stats = {
-            player: {
-                "c2": int(request.form.get(f'c2_{player}', 0)),
-                "ctp": f'ctp_{player}' in request.form,
-                "ace": request.form.get(f'ace_{player}') == '1'
-            } for player in data['players']
-        }
+        sorted_names = sorted(adjusted.items(), key=lambda x: x[1])
+        placements = [name for name, _ in sorted_names]
 
-        for p in data['players'].values():
-            p['points'] = 0
-        for name in data['players']:
-            data['players'][name]['handicap'] = data['start_handicaps'][name]
+        for idx, name in enumerate(placements):
+            info = scores[name]
+            adjusted_score = adjusted[name]
+            placement = idx + 1
+            cur.execute(
+                "INSERT INTO round_scores (round_id, player_id, raw_score, adjusted_score, placement, handicap_used, c2, ctp, ace) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (round_id, info['id'], info['raw'], adjusted_score, placement, info['handicap'], info['c2'], info['ctp'], info['ace'])
+            )
 
-        data['rounds'][round_id]['scores'] = new_scores
-        data['rounds'][round_id]['stats'] = new_stats
+            points_add = 4 - placement
+            cur.execute("UPDATE players SET points = points + %s, total_c2 = total_c2 + %s, total_ctp = total_ctp + %s, total_ace = total_ace + %s WHERE id = %s",
+                        (points_add, info['c2'], info['ctp'], info['ace'], info['id']))
 
-        for i, r in enumerate(data['rounds']):
-            adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
-            r['adjusted_scores'] = adjusted
-            r['placements'] = placements
-            apply_points_and_handicap(data, placements)
+            if placement == 1:
+                cur.execute("UPDATE players SET handicap = GREATEST(handicap - 1, 0) WHERE id = %s", (info['id'],))
+            elif placement == 3:
+                cur.execute("UPDATE players SET handicap = handicap + 1 WHERE id = %s", (info['id'],))
 
-        update_player_stats(data)
-        save_data(data)
+        conn.commit()
+        cur.close()
+        conn.close()
         return redirect(url_for('index'))
 
-    return render_template('edit_round.html', data=data, round_id=round_id)
+    cur.execute("SELECT id FROM rounds ORDER BY id")
+    rounds = cur.fetchall()
+    round_data = []
+    for r in rounds:
+        cur.execute(
+            "SELECT rs.*, p.name FROM round_scores rs JOIN players p ON rs.player_id = p.id WHERE rs.round_id = %s ORDER BY rs.placement",
+            (r[0],))
+        scores = cur.fetchall()
+        round_data.append({'id': r[0], 'scores': scores})
 
-@app.route('/delete/<int:round_id>', methods=['POST'])
-def delete_round(round_id):
-    data = load_data()
-    data['rounds'].pop(round_id)
-    for p in data['players'].values():
-        p['points'] = 0
-    for name in data['players']:
-        data['players'][name]['handicap'] = data['start_handicaps'][name]
-    for i, r in enumerate(data['rounds']):
-        adjusted, placements = calculate_adjusted_and_placements(data, r['scores'])
-        r['adjusted_scores'] = adjusted
-        r['placements'] = placements
-        apply_points_and_handicap(data, placements)
-        r['id'] = i
-    update_player_stats(data)
-    save_data(data)
-    return redirect(url_for('index'))
+    cur.close()
+    conn.close()
+    return render_template('index.html', players=players, rounds=round_data)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
