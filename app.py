@@ -78,8 +78,8 @@ def index():
         for pid, name, hcap, *_ in players:
             score = int(request.form[name])
             c2 = int(request.form.get(f'c2_{name}', 0))
-            ctp = 1 if f'ctp_{name}' in request.form else 0
-            ace = 1 if request.form.get(f'ace_{name}') == '1' else 0
+            ctp = f'ctp_{name}' in request.form
+            ace = request.form.get(f'ace_{name}') == '1'
             scores[name] = {
                 'id': pid,
                 'raw': score,
