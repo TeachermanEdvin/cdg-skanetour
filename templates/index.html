@@ -28,7 +28,7 @@
         <tr><th>Spelare</th><th>Poäng</th><th>Handikapp</th><th>C2</th><th>CTP</th><th>ACE</th></tr>
       </thead>
       <tbody>
-        {% for name, info in data.players.items() %}
+        {% for id, name, handicap, points, total_c2, total_ctp, total_ace in players %}
         <tr><td>{{ name }}</td><td>{{ info.points }}</td><td>{{ info.handicap }}</td><td>{{ info.total_c2 or 0 }}</td><td>{{ info.total_ctp or 0 }}</td><td>{{ info.total_ace or 0 }}</td></tr>
         {% endfor %}
       </tbody>
