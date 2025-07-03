@@ -45,10 +45,6 @@ def init_db():
     cur.close()
     conn.close()
 
-@app.before_first_request
-def setup_db_if_needed():
-    init_db()
-
 @app.route('/setup', methods=['GET', 'POST'])
 def setup():
     if request.method == 'POST':
@@ -138,5 +134,6 @@ def index():
     return render_template('index.html', players=players, rounds=round_data)
 
 if __name__ == '__main__':
+    init_db()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
