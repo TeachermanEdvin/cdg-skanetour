@@ -207,3 +207,20 @@ def recalculate_all(cur, tour_id):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    tour_id = session.get("tour_id", 1)
+    if request.method == "POST":
+        names = request.form.getlist("name")
+        handicaps = request.form.getlist("handicap")
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                for name, hcp in zip(names, handicaps):
+                    cur.execute(
+                        "INSERT INTO players (name, handicap, tour_id) VALUES (%s, %s, %s)",
+                        (name, int(hcp), tour_id),
+                    )
+                conn.commit()
+        return redirect(url_for("index"))
+    return render_template("setup.html")
