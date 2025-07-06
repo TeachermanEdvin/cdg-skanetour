@@ -1,24 +1,36 @@
-
 <!doctype html>
 <html lang="sv">
   <head>
     <meta charset="utf-8">
     <title>Redigera Runda</title>
+    <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body>
-    <h1>Redigera Runda {{ round_id }}</h1>
-    <form method="post">
-      {% for player in players %}
-        <div>
-          <label>{{ player[1] }}</label>
-          <input type="number" name="{{ player[1] }}" value="{{ round_scores[player[1]]['raw'] }}" required>
-          C2: <input type="number" name="c2_{{ player[1] }}" value="{{ round_scores[player[1]]['c2'] }}">
-          CTP: <input type="checkbox" name="ctp_{{ player[1] }}" {% if round_scores[player[1]]['ctp'] %}checked{% endif %}>
-          ACE: <input type="checkbox" name="ace_{{ player[1] }}" {% if round_scores[player[1]]['ace'] %}checked{% endif %}>
+  <body class="bg-green-50 min-h-screen text-gray-800 font-sans">
+    <div class="container mx-auto p-6">
+      <h1 class="text-3xl font-bold mb-6 text-green-700">✏️ Redigera Runda {{ round_id }}</h1>
+      <form method="post" class="bg-white p-6 rounded-xl shadow space-y-4">
+        {% for player in players %}
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+            <label class="font-medium">{{ player[1] }}</label>
+            <input type="number" name="{{ player[1] }}" value="{{ round_scores[player[1]]['raw'] }}" required class="border rounded px-2 py-1">
+            <div class="flex gap-4 items-center">
+              <label class="flex items-center gap-1">
+                C2: <input type="number" name="c2_{{ player[1] }}" value="{{ round_scores[player[1]]['c2'] }}" class="w-16 border rounded px-1 py-0.5">
+              </label>
+              <label class="flex items-center gap-1">
+                <input type="checkbox" name="ctp_{{ player[1] }}" {% if round_scores[player[1]]['ctp'] %}checked{% endif %}> CTP
+              </label>
+              <label class="flex items-center gap-1">
+                <input type="checkbox" name="ace_{{ player[1] }}" {% if round_scores[player[1]]['ace'] %}checked{% endif %}> ACE
+              </label>
+            </div>
+          </div>
+        {% endfor %}
+        <div class="flex gap-4">
+          <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Spara ändringar</button>
+          <a href="{{ url_for('index') }}" class="text-blue-600 hover:underline">⬅️ Tillbaka</a>
         </div>
-      {% endfor %}
-      <button type="submit">Spara ändringar</button>
-    </form>
-    <a href="{{ url_for('index') }}">Tillbaka</a>
+      </form>
+    </div>
   </body>
 </html>
