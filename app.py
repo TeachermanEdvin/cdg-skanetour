@@ -26,8 +26,7 @@ def init_db():
         total_ace INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS rounds (
-        id SERIAL PRIMARY KEY,
-        tour_id INTEGER REFERENCES tours(id)
+        id SERIAL PRIMARY KEY
     );
     CREATE TABLE IF NOT EXISTS round_scores (
         id SERIAL PRIMARY KEY,
@@ -46,7 +45,9 @@ def init_db():
         with conn.cursor() as cur:
             cur.execute(schema)
             cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS tour_id INTEGER REFERENCES tours(id);")
+            cur.execute("ALTER TABLE rounds ADD COLUMN IF NOT EXISTS tour_id INTEGER REFERENCES tours(id);")
         conn.commit()
+
 
 @app.route('/select_tour', methods=['GET', 'POST'])
 def select_tour():
