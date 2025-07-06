@@ -1,3 +1,4 @@
+
 from flask import Flask, render_template, request, redirect, url_for, session
 import psycopg2
 import os
@@ -84,129 +85,21 @@ def index():
             place = idx + 1
             cur.execute(
                 "INSERT INTO round_scores (round_id, player_id, raw_score, adjusted_score, placement, handicap_used, c2, ctp, ace) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (round_id, info['id'], info['raw'], adjusted[name], place, info['handicap'], info['c2'], bool(info['ctp']), bool(info['ace']))
+                (round_id, info['id'], info['raw'], adjusted[name], place, info['handicap'], info['c2'], info['ctp'], info['ace'])
             )
-            points = 4 - place
-            cur.execute("UPDATE players SET points = points + %s, total_c2 = total_c2 + %s, total_ctp = total_ctp + %s, total_ace = total_ace + %s WHERE id = %s",
-                        (points, info['c2'], info['ctp'], info['ace'], info['id']))
-            if place == 1:
-                cur.execute("UPDATE players SET handicap = GREATEST(handicap - 1, 0) WHERE id = %s", (info['id'],))
-            elif place == 3:
-                cur.execute("UPDATE players SET handicap = handicap + 1 WHERE id = %s", (info['id'],))
-
         conn.commit()
-        cur.close()
-        conn.close()
         return redirect(url_for('index'))
 
-    cur.execute("SELECT id FROM rounds WHERE tour_id = %s ORDER BY id", (tour_id,))
+    # Load rounds and scores
+    cur.execute("SELECT id FROM rounds WHERE tour_id = %s ORDER BY id DESC", (tour_id,))
     round_ids = cur.fetchall()
-    round_data = []
-    for rid in round_ids:
-        cur.execute("SELECT rs.*, p.name FROM round_scores rs JOIN players p ON rs.player_id = p.id WHERE rs.round_id = %s", (rid[0],))
-        round_data.append({'id': rid[0], 'scores': cur.fetchall()})
-
-    cur.close()
-    conn.close()
-    return render_template('index.html', players=players, rounds=round_data)
-
-@app.route('/edit_round/<int:round_id>', methods=['GET', 'POST'])
-def edit_round(round_id):
-    tour_id = session.get('tour_id', 1)
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT id, name, handicap FROM players WHERE tour_id = %s ORDER BY id", (tour_id,))
-    players = cur.fetchall()
-
-    if request.method == 'POST':
-        cur.execute("DELETE FROM round_scores WHERE round_id = %s", (round_id,))
-        scores = {}
-        for pid, name, hcap in players:
-            score = int(request.form[name])
-            c2 = int(request.form.get(f'c2_{name}', 0))
-            ctp = f'ctp_{name}' in request.form
-            ace = f'ace_{name}' in request.form
-            scores[name] = {
-                'id': pid,
-                'raw': score,
-                'handicap': hcap,
-                'c2': c2,
-                'ctp': int(ctp),
-                'ace': int(ace)
-            }
-
-        adjusted = {name: s['raw'] - s['handicap'] for name, s in scores.items()}
-        placements = sorted(adjusted.items(), key=lambda x: x[1])
-        for idx, (name, _) in enumerate(placements):
-            info = scores[name]
-            place = idx + 1
-            cur.execute(
-                "INSERT INTO round_scores (round_id, player_id, raw_score, adjusted_score, placement, handicap_used, c2, ctp, ace) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (round_id, info['id'], info['raw'], adjusted[name], place, info['handicap'], info['c2'], bool(info['ctp']), bool(info['ace']))
-            )
-
-        conn.commit()
-        recalculate_all(cur, tour_id)
-        conn.commit()
-        cur.close()
-        conn.close()
-        return redirect(url_for('index'))
-
-    cur.execute("SELECT rs.*, p.name FROM round_scores rs JOIN players p ON rs.player_id = p.id WHERE rs.round_id = %s", (round_id,))
-    score_data = cur.fetchall()
-    round_scores = {
-        row[-1]: {
-            'raw': row[3],
-            'c2': row[7],
-            'ctp': row[8],
-            'ace': row[9]
-        } for row in score_data
-    }
-
-    conn.close()
-    return render_template('edit_round.html', round_id=round_id, players=players, round_scores=round_scores)
-
-@app.route('/delete_round/<int:round_id>')
-def delete_round(round_id):
-    tour_id = session.get('tour_id', 1)
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM round_scores WHERE round_id = %s", (round_id,))
-    cur.execute("DELETE FROM rounds WHERE id = %s", (round_id,))
-    conn.commit()
-    recalculate_all(cur, tour_id)
-    conn.commit()
-    cur.close()
-    conn.close()
-    return redirect(url_for('index'))
-
-def recalculate_all(cur, tour_id):
-    cur.execute("UPDATE players SET points = 0, total_c2 = 0, total_ctp = 0, total_ace = 0, handicap = 0 WHERE tour_id = %s", (tour_id,))
-    cur.execute("SELECT id FROM rounds WHERE tour_id = %s ORDER BY id", (tour_id,))
-    rounds = cur.fetchall()
-    for r in rounds:
-        cur.execute("SELECT rs.*, p.name, p.handicap FROM round_scores rs JOIN players p ON rs.player_id = p.id WHERE rs.round_id = %s", (r[0],))
+    rounds = []
+    for (rid,) in round_ids:
+        cur.execute("SELECT * FROM round_scores WHERE round_id = %s", (rid,))
         scores = cur.fetchall()
-        adjusted = {row[-2]: row[3] - row[-1] for row in scores}
-        placements = sorted(adjusted.items(), key=lambda x: x[1])
-        for idx, (name, _) in enumerate(placements):
-            for row in scores:
-                if row[-2] == name:
-                    pid = row[2]
-                    c2 = row[7]
-                    ctp = row[8]
-                    ace = row[9]
-                    points = 4 - (idx + 1)
-                    cur.execute("UPDATE players SET points = points + %s, total_c2 = total_c2 + %s, total_ctp = total_ctp + %s, total_ace = total_ace + %s WHERE id = %s",
-                                (points, c2, ctp, ace, pid))
-                    if idx == 0:
-                        cur.execute("UPDATE players SET handicap = GREATEST(handicap - 1, 0) WHERE id = %s", (pid,))
-                    elif idx == 2:
-                        cur.execute("UPDATE players SET handicap = handicap + 1 WHERE id = %s", (pid,))
+        rounds.append({'id': rid, 'scores': scores})
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    return render_template('index.html', players=players, rounds=rounds)
 
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
@@ -224,3 +117,59 @@ def setup():
                 conn.commit()
         return redirect(url_for("index"))
     return render_template("setup.html")
+
+@app.route("/select_tour", methods=["GET", "POST"])
+def select_tour():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if request.method == "POST":
+                tour_name = request.form["tour_name"]
+                cur.execute("INSERT INTO tours (name) VALUES (%s)", (tour_name,))
+                conn.commit()
+            cur.execute("SELECT id, name FROM tours ORDER BY created_at DESC")
+            tours = cur.fetchall()
+    return render_template("select_tour.html", tours=tours)
+
+@app.route("/set_tour/<int:tour_id>")
+def set_tour(tour_id):
+    session["tour_id"] = tour_id
+    return redirect(url_for("index"))
+
+@app.route("/edit_round/<int:round_id>", methods=["GET", "POST"])
+def edit_round(round_id):
+    tour_id = session.get("tour_id", 1)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, name, handicap FROM players WHERE tour_id = %s", (tour_id,))
+            players = cur.fetchall()
+            if request.method == "POST":
+                cur.execute("DELETE FROM round_scores WHERE round_id = %s", (round_id,))
+                for player in players:
+                    name = player[1]
+                    raw = int(request.form[name])
+                    c2 = int(request.form.get(f'c2_{name}', 0))
+                    ctp = f'ctp_{name}' in request.form
+                    ace = f'ace_{name}' in request.form
+                    adjusted = raw - player[2]
+                    cur.execute(
+                        "INSERT INTO round_scores (round_id, player_id, raw_score, adjusted_score, placement, handicap_used, c2, ctp, ace) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        (round_id, player[0], raw, adjusted, 1, player[2], c2, int(ctp), int(ace))
+                    )
+                conn.commit()
+                return redirect(url_for("index"))
+            cur.execute("SELECT * FROM round_scores WHERE round_id = %s", (round_id,))
+            data = cur.fetchall()
+            round_scores = {p[1]: {'raw': r[3], 'c2': r[7], 'ctp': r[8], 'ace': r[9]} for r in data for p in players if p[0] == r[2]}
+    return render_template("edit_round.html", round_id=round_id, players=players, round_scores=round_scores)
+
+@app.route("/delete_round/<int:round_id>")
+def delete_round(round_id):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM round_scores WHERE round_id = %s", (round_id,))
+            cur.execute("DELETE FROM rounds WHERE id = %s", (round_id,))
+            conn.commit()
+    return redirect(url_for("index"))
+
+if __name__ == "__main__":
+    app.run(debug=True)
