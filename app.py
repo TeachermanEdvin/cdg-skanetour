@@ -205,4 +205,5 @@ def recalculate_all(cur, tour_id):
                         cur.execute("UPDATE players SET handicap = handicap + 1 WHERE id = %s", (pid,))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
