@@ -1,67 +1,63 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8">
-  <title>Discgolf Tour</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta charset="UTF-8">
+    <title>Poängställning</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="bg-light text-dark">
-  <div class="container py-4">
-    <h1 class="mb-4">Discgolf Tour</h1>
+<body class="container py-4">
+    <h1 class="mb-4">🎯 Discgolf Tour</h1>
+    <h3 class="mt-4">Nuvarande ställning</h3>
+    <table class="table table-bordered">
+        <thead><tr><th>Namn</th><th>Poäng</th><th>Handikapp</th><th>C2</th><th>CTP</th><th>ACE</th></tr></thead>
+        <tbody>
+        {% for id, name, hcap, points, c2, ctp, ace in players %}
+        <tr>
+            <td>{{ name }}</td>
+            <td>{{ points }}</td>
+            <td>{{ hcap }}</td>
+            <td>{{ c2 }}</td>
+            <td>{{ ctp }}</td>
+            <td>{{ ace }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
 
-    <form method="post" class="mb-4">
-      <h3>Ny runda</h3>
-      {% for pid, name, handicap, points, total_c2, total_ctp, total_ace in players %}
-        <div class="card p-3 mb-2">
-          <h5>{{ name }} (hcp {{ handicap }}, poäng {{ points }})</h5>
-          <div class="row">
+    <h3 class="mt-5">➕ Ny runda</h3>
+    <form method="post">
+        {% for id, name, hcap, points, c2, ctp, ace in players %}
+        <div class="row mb-2 align-items-center">
+            <div class="col-md-3"><strong>{{ name }}</strong></div>
+            <div class="col"><input type="number" name="{{ name }}" class="form-control" placeholder="Score" required></div>
+            <div class="col"><input type="number" name="c2_{{ name }}" class="form-control" placeholder="C2-puttar"></div>
+            <div class="col"><input type="checkbox" name="ctp_{{ name }}"> CTP</div>
             <div class="col">
-              <label>Råscore:</label>
-              <input type="number" name="{{ name }}" class="form-control" required>
+                <select name="ace_{{ name }}" class="form-select">
+                    <option value="0">Ingen ACE</option>
+                    <option value="1">🎯 ACE!</option>
+                </select>
             </div>
-            <div class="col">
-              <label>C2-puttar:</label>
-              <input type="number" name="c2_{{ name }}" class="form-control" value="0">
-            </div>
-            <div class="col d-flex align-items-end">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="ctp_{{ name }}">
-                <label class="form-check-label">CTP</label>
-              </div>
-            </div>
-            <div class="col d-flex align-items-end">
-              <select class="form-select" name="ace_{{ name }}">
-                <option value="0" selected>Inget ACE</option>
-                <option value="1">💥 ACE!</option>
-              </select>
-            </div>
-          </div>
         </div>
-      {% endfor %}
-      <button type="submit" class="btn btn-primary">Spara runda</button>
+        {% endfor %}
+        <button type="submit" class="btn btn-success mt-2">Spara runda</button>
     </form>
 
-    <h3>Sammanställning</h3>
-    {% for pid, name, handicap, points, total_c2, total_ctp, total_ace in players %}
-      <div class="border p-2 mb-1">
-        <strong>{{ name }}</strong>: {{ points }}p – HCP: {{ handicap }} – C2: {{ total_c2 }} – CTP: {{ total_ctp }} – ACE: {{ total_ace }}
-      </div>
-    {% endfor %}
-
-    <h3 class="mt-4">Rundor</h3>
-    {% for round in rounds %}
-      <div class="card mb-3">
-        <div class="card-header">Runda #{{ round.id }}</div>
+    <h3 class="mt-5">📜 Tidigare rundor</h3>
+    {% for r in rounds %}
+    <div class="card mb-3">
+        <div class="card-header">Runda {{ r.id }}</div>
         <ul class="list-group list-group-flush">
-          {% for score in round.scores %}
+        {% for row in r.scores %}
             <li class="list-group-item">
-              {{ score[-1] }} – Råscore: {{ score[3] }}, Justerad: {{ score[4] }}, Placering: {{ score[5] }},
-              C2: {{ score[7] }}, CTP: {{ "✅" if score[8] else "❌" }}, ACE: {{ "💥" if score[9] else "❌" }}
+                {{ row[-1] }} – {{ row[3] }} slag (justerat: {{ row[4] }}) – placering: {{ row[5] }}
+                {% if row[7] %} | C2: {{ row[7] }}{% endif %}
+                {% if row[8] %} | CTP{% endif %}
+                {% if row[9] %} | ACE!{% endif %}
             </li>
-          {% endfor %}
+        {% endfor %}
         </ul>
-      </div>
+    </div>
     {% endfor %}
-  </div>
 </body>
 </html>
