@@ -4,7 +4,6 @@ import os
 
 app = Flask(__name__)
 app.secret_key = "supersecure"
-
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db():
@@ -89,6 +88,7 @@ def setup():
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    init_db()
     tour_id = session.get('tour_id')
     if not tour_id:
         return redirect(url_for('select_tour'))
