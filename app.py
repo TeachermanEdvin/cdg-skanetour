@@ -3,8 +3,9 @@ import psycopg2
 import os
 
 app = Flask(__name__)
-app.secret_key = "supersecure"
-DATABASE_URL = os.environ.get("DATABASE_URL")
+app.secret_key = 'your_secret_key'
+
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db():
     return psycopg2.connect(DATABASE_URL, sslmode='require')
@@ -18,13 +19,13 @@ def init_db():
     );
     CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
-        tour_id INTEGER REFERENCES tours(id),
         name TEXT NOT NULL,
         handicap INTEGER NOT NULL DEFAULT 0,
         points INTEGER NOT NULL DEFAULT 0,
         total_c2 INTEGER NOT NULL DEFAULT 0,
         total_ctp INTEGER NOT NULL DEFAULT 0,
-        total_ace INTEGER NOT NULL DEFAULT 0
+        total_ace INTEGER NOT NULL DEFAULT 0,
+        tour_id INTEGER REFERENCES tours(id)
     );
     CREATE TABLE IF NOT EXISTS rounds (
         id SERIAL PRIMARY KEY,
@@ -46,54 +47,12 @@ def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(schema)
-            cur.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS tour_id INTEGER REFERENCES tours(id);")
         conn.commit()
-
-@app.route('/select_tour', methods=['GET', 'POST'])
-def select_tour():
-    conn = get_db()
-    cur = conn.cursor()
-    if request.method == 'POST':
-        tour_name = request.form['tour_name']
-        cur.execute("INSERT INTO tours (name) VALUES (%s) RETURNING id", (tour_name,))
-        session['tour_id'] = cur.fetchone()[0]
-        conn.commit()
-        return redirect(url_for('setup'))
-    cur.execute("SELECT id, name FROM tours ORDER BY created_at DESC")
-    tours = cur.fetchall()
-    conn.close()
-    return render_template('select_tour.html', tours=tours)
-
-@app.route('/set_tour/<int:tour_id>')
-def set_tour(tour_id):
-    session['tour_id'] = tour_id
-    return redirect(url_for('index'))
-
-@app.route('/setup', methods=['GET', 'POST'])
-def setup():
-    tour_id = session.get('tour_id')
-    if not tour_id:
-        return redirect(url_for('select_tour'))
-
-    if request.method == 'POST':
-        names = request.form.getlist('name')
-        handicaps = request.form.getlist('handicap')
-        with get_db() as conn:
-            cur = conn.cursor()
-            cur.execute("DELETE FROM players WHERE tour_id = %s", (tour_id,))
-            for name, h in zip(names, handicaps):
-                cur.execute("INSERT INTO players (tour_id, name, handicap) VALUES (%s, %s, %s)", (tour_id, name, int(h)))
-            conn.commit()
-        return redirect(url_for('index'))
-    return render_template('setup.html')
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     init_db()
-    tour_id = session.get('tour_id')
-    if not tour_id:
-        return redirect(url_for('select_tour'))
-
+    tour_id = session.get('tour_id', 1)
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT id, name, handicap, points, total_c2, total_ctp, total_ace FROM players WHERE tour_id = %s ORDER BY id", (tour_id,))
@@ -108,7 +67,7 @@ def index():
             score = int(request.form[name])
             c2 = int(request.form.get(f'c2_{name}', 0))
             ctp = f'ctp_{name}' in request.form
-            ace = request.form.get(f'ace_{name}') == '1'
+            ace = f'ace_{name}' in request.form
             scores[name] = {
                 'id': pid,
                 'raw': score,
@@ -136,32 +95,24 @@ def index():
                 cur.execute("UPDATE players SET handicap = handicap + 1 WHERE id = %s", (info['id'],))
 
         conn.commit()
+        cur.close()
         conn.close()
         return redirect(url_for('index'))
 
     cur.execute("SELECT id FROM rounds WHERE tour_id = %s ORDER BY id", (tour_id,))
-    rounds = cur.fetchall()
+    round_ids = cur.fetchall()
     round_data = []
-    for r in rounds:
-        cur.execute(
-            "SELECT rs.*, p.name FROM round_scores rs JOIN players p ON rs.player_id = p.id WHERE rs.round_id = %s ORDER BY rs.placement",
-            (r[0],))
-        scores = cur.fetchall()
-        round_data.append({'id': r[0], 'scores': scores})
+    for rid in round_ids:
+        cur.execute("SELECT rs.*, p.name FROM round_scores rs JOIN players p ON rs.player_id = p.id WHERE rs.round_id = %s", (rid[0],))
+        round_data.append({'id': rid[0], 'scores': cur.fetchall()})
 
     cur.close()
     conn.close()
     return render_template('index.html', players=players, rounds=round_data)
 
-if __name__ == '__main__':
-    init_db()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
 @app.route('/edit_round/<int:round_id>', methods=['GET', 'POST'])
 def edit_round(round_id):
-    tour_id = session.get('tour_id')
-    if not tour_id:
-        return redirect(url_for('select_tour'))
+    tour_id = session.get('tour_id', 1)
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT id, name, handicap FROM players WHERE tour_id = %s ORDER BY id", (tour_id,))
@@ -217,10 +168,7 @@ def edit_round(round_id):
 
 @app.route('/delete_round/<int:round_id>')
 def delete_round(round_id):
-    tour_id = session.get('tour_id')
-    if not tour_id:
-        return redirect(url_for('select_tour'))
-
+    tour_id = session.get('tour_id', 1)
     conn = get_db()
     cur = conn.cursor()
     cur.execute("DELETE FROM round_scores WHERE round_id = %s", (round_id,))
@@ -248,10 +196,13 @@ def recalculate_all(cur, tour_id):
                     c2 = row[7]
                     ctp = row[8]
                     ace = row[9]
-                    points = 3 - idx + 1
+                    points = 4 - (idx + 1)
                     cur.execute("UPDATE players SET points = points + %s, total_c2 = total_c2 + %s, total_ctp = total_ctp + %s, total_ace = total_ace + %s WHERE id = %s",
                                 (points, c2, ctp, ace, pid))
                     if idx == 0:
                         cur.execute("UPDATE players SET handicap = GREATEST(handicap - 1, 0) WHERE id = %s", (pid,))
                     elif idx == 2:
                         cur.execute("UPDATE players SET handicap = handicap + 1 WHERE id = %s", (pid,))
+
+if __name__ == '__main__':
+    app.run(debug=True)
